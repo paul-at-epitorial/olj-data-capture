@@ -1,2 +1,2 @@
 # olj-data-capture
-Automated bot that sends OnlineJobs.ph alerts to Discord.
+Automated bot that sends OLJ alerts to Discord.
