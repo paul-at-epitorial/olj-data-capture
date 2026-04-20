@@ -140,7 +140,7 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
         const saveData = await saveRes.json();
 
         if (saveData.status === 'duplicate') {
-            console.log(`[SKIPPED] Job ${jobId} is a duplicate description of a past post.`);
+            console.log(`[SKIPPED] Job ${jobId} is a duplicate description of past post ${saveData.duplicateId}.`);
             continue;
         }
     } catch (err) {
