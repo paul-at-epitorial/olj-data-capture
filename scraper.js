@@ -77,28 +77,51 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     console.log(`[NEW] Extracting data for Job ${jobId}...`);
     await page.goto(link, { waitUntil: 'domcontentloaded' });
 
-    // Extract the text using DOM selectors (Employer data removed)
+    // Extract the text using DOM selectors
     const jobData = await page.evaluate(() => {
       
+      // Helper function to grab text and clean up OLJ's corrupted emojis (????)
+      const cleanText = (text) => {
+        return text ? text.replace(/\?{2,}/g, '').trim() : 'N/A';
+      };
+
       const getText = (selector) => {
         const el = document.querySelector(selector);
-        return el ? el.innerText.trim() : 'N/A';
+        return cleanText(el ? el.innerText : 'N/A');
       };
       
       const getSiblingText = (labelText) => {
         const headers = Array.from(document.querySelectorAll('h3, dt, strong, span, p')); 
         const target = headers.find(h => h.innerText.trim().toUpperCase().includes(labelText.toUpperCase()));
-        return target && target.nextElementSibling ? target.nextElementSibling.innerText.trim() : 'N/A';
+        return cleanText(target && target.nextElementSibling ? target.nextElementSibling.innerText : 'N/A');
       };
       
+      let rawDesc = getText('#job-description');
+      // Remove excessive line breaks to keep the paragraph compact
+      rawDesc = rawDesc.replace(/\n{3,}/g, '\n\n');
+      
+      // Smart Truncation: Cut at ~450 chars, but stop at the last whole word so it doesn't chop mid-sentence
+      let finalDesc = rawDesc;
+      if (rawDesc.length > 450) {
+        finalDesc = rawDesc.substring(0, 450);
+        finalDesc = finalDesc.substring(0, finalDesc.lastIndexOf(" ")) + '...';
+      }
+
       return {
         title: getText('h1'), 
         salary: getSiblingText('WAGE / SALARY'),
         type: getSiblingText('TYPE OF WORK'),
         hours: getSiblingText('HOURS PER WEEK'),
-        description: getText('#job-description').substring(0, 500) + '...'
+        description: finalDesc
       };
     });
+
+    // Format the Hours (Issue #3)
+    let displayHours = jobData.hours;
+    // If it contains a number, but DOES NOT contain the word 'hour' or 'hrs'
+    if (/\d/.test(displayHours) && !/hour|hrs/i.test(displayHours)) {
+        displayHours += " hours";
+    }
 
     // 6. Sort the job into a category using comprehensive arrays
     const searchText = (jobData.title + " " + jobData.description).toLowerCase();
@@ -120,12 +143,13 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     else if (kwManagement.some(kw => searchText.includes(kw))) category = "management-va";
 
     // 7. Format the payload for the Render Bot
-    const richTitle = `${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${jobData.hours}\n📝 **Description:**\n${jobData.description}`;
+    // Wrapping the link in < > hides Discord's ugly automated link preview box
+    const richTitle = `${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${displayHours}\n📝 **Description:**\n${jobData.description}`;
 
     const renderPayload = {
       jobCategoryKey: category,
       jobTitle: richTitle,
-      jobLink: link
+      jobLink: `<${link}>`
     };
 
     // 8. Fire it to the Render server
