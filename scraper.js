@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 
 // Paste your actual URLs here
-const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbxXjl7h99EAeJmLG3tkhOWJKZ3J88oubMNHDFsWa1zlr1nFLZFBRtal2CSxePdGSx6J/exec';
+const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbzSeUYpWgKRMdWRTFKm88v08bK7D86uOkBK0nwX_JIkg39AJM9kKb2d6k6lS1Mqag5I/exec';
 const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
@@ -134,7 +134,8 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     try {
         const saveRes = await fetch(GOOGLE_SHEET_WEB_APP, {
             method: 'POST',
-            body: JSON.stringify({ action: 'save', jobId: jobId, description: jobData.description }),
+            // Notice we added jobLink: link right here
+            body: JSON.stringify({ action: 'save', jobId: jobId, jobLink: link, description: jobData.description }),
             headers: { 'Content-Type': 'application/json' }
         });
         const saveData = await saveRes.json();
