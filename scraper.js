@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 
 // Paste your actual URLs here
 const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbxXjl7h99EAeJmLG3tkhOWJKZ3J88oubMNHDFsWa1zlr1nFLZFBRtal2CSxePdGSx6J/exec';
-const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1495231809527742635/0mFhDtm76pHDpaARu2EwNEOZVvId3LJibKyh0FLBASIIzG_UassdNXvK6BHGqQL9ZI-G';
+const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
   console.log('Launching browser in cloud mode...');
@@ -100,21 +100,46 @@ const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1495231809527742635/0m
       };
     });
 
-    // 6. Format the Discord message
-    const discordMessage = {
-      content: `🚨 **NEW JOB ALERT** 🚨\n**Posted:** ${displayTime}\n\n**${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${jobData.hours}\n📝 **Description:**\n${jobData.description}\n\n🔗 **Link:** ${link}`
+    // 6. Sort the job into a category using comprehensive arrays
+    const searchText = (jobData.title + " " + jobData.description).toLowerCase();
+    
+    const kwSystems = ['gohighlevel', 'ghl', 'zapier', 'make.com', 'api', 'automation', 'webhook', 'crm', 'activecampaign', 'hubspot', 'systems'];
+    const kwMarketing = ['marketing', 'seo', 'social media', 'campaign', 'media buyer', 'facebook ads', 'google ads', 'lead gen', 'outreach', 'cold call', 'email', 'tiktok', 'instagram'];
+    const kwEcom = ['amazon', 'fba', 'dropship', 'shopify', 'ecommerce', 'e-commerce', 'product research', 'sourcing', 'seller central', 'walmart', 'arbitrage'];
+    const kwCreative = ['video', 'editor', 'design', 'graphic', 'thumbnail', 'premiere', 'after effects', 'photoshop', 'illustrator', 'canva', 'copywrit', 'ui/ux', 'blog', 'midjourney', 'runway'];
+    const kwTech = ['tech', 'developer', 'code', 'it support', 'web', 'software', 'programmer', 'python', 'javascript'];
+    const kwManagement = ['manage', 'director', 'lead', 'supervisor', 'head of'];
+    
+    let category = "admin-va"; // Default fallback if no keywords match
+
+    if (kwCreative.some(kw => searchText.includes(kw))) category = "creative-va";
+    else if (kwEcom.some(kw => searchText.includes(kw))) category = "ecom-va";
+    else if (kwMarketing.some(kw => searchText.includes(kw))) category = "marketing-va";
+    else if (kwSystems.some(kw => searchText.includes(kw))) category = "automations-va";
+    else if (kwTech.some(kw => searchText.includes(kw))) category = "tech-va";
+    else if (kwManagement.some(kw => searchText.includes(kw))) category = "management-va";
+
+    // 7. Format the payload for the Render Bot
+    const richTitle = `${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${jobData.hours}\n📝 **Description:**\n${jobData.description}`;
+
+    const renderPayload = {
+      jobCategoryKey: category,
+      jobTitle: richTitle,
+      jobLink: link
     };
 
-    // 7. Fire it to Discord
+    // 8. Fire it to the Render server
     try {
-      await fetch(DISCORD_WEBHOOK, {
+      const res = await fetch(DISCORD_WEBHOOK, {
         method: 'POST',
-        body: JSON.stringify(discordMessage),
+        body: JSON.stringify(renderPayload),
         headers: { 'Content-Type': 'application/json' }
       });
-      console.log(`[SUCCESS] Posted Job ${jobId} to Discord!`);
+      
+      if (!res.ok) throw new Error(`Render server returned ${res.status}`);
+      console.log(`[SUCCESS] Posted Job ${jobId} to Discord via Render!`);
     } catch (err) {
-      console.log(`Error posting to Discord for ${jobId}:`, err);
+      console.log(`Error posting to Render for ${jobId}:`, err);
     }
     
     // Pause for 3 seconds between scraping profiles
