@@ -55,11 +55,11 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       }
     }
 
-    // 4. Ping Google Sheets to check for duplicates
+    // 4. Ping Google Sheets to check for ID duplicates
     try {
       const checkRes = await fetch(GOOGLE_SHEET_WEB_APP, {
         method: 'POST',
-        body: JSON.stringify({ jobId: jobId }),
+        body: JSON.stringify({ action: 'check_id', jobId: jobId }),
         headers: { 'Content-Type': 'application/json' }
       });
       const checkData = await checkRes.json();
@@ -121,6 +121,31 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     // If it contains a number, but DOES NOT contain the word 'hour' or 'hrs'
     if (/\d/.test(displayHours) && !/hour|hrs/i.test(displayHours)) {
         displayHours += " hours";
+    }
+
+    // Check for closed or deleted job posts
+    const statusCheck = (jobData.title + " " + jobData.description).toLowerCase();
+    if (statusCheck.includes("has been closed") || statusCheck.includes("no longer posted") || statusCheck.includes("has been deleted") || statusCheck.includes("no longer visible") || statusCheck.includes("no longer available")) {
+        console.log(`[SKIPPED] Job ${jobId} is closed or deleted.`);
+        continue;
+    }
+
+    // 5.5 Send description to Sheet (Column C) and check for copy-paste duplicates
+    try {
+        const saveRes = await fetch(GOOGLE_SHEET_WEB_APP, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'save', jobId: jobId, description: jobData.description }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const saveData = await saveRes.json();
+
+        if (saveData.status === 'duplicate') {
+            console.log(`[SKIPPED] Job ${jobId} is a duplicate description of a past post.`);
+            continue;
+        }
+    } catch (err) {
+        console.log(`Error saving Google Sheets data for ${jobId}:`, err);
+        continue;
     }
 
     // 6. Sort the job into a category using comprehensive arrays
