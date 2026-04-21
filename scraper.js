@@ -2,7 +2,7 @@ const { connect } = require("puppeteer-real-browser");
 const { createCursor } = require("ghost-cursor");
 
 // Paste your actual URLs here
-const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbzSeUYpWgKRMdWRTFKm88v08bK7D86uOkBK0nwX_JIkg39AJM9kKb2d6k6lS1Mqag5I/exec';
+const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbz4XegBGQS31wmMsG8Ux-jPnfdSHHiZCAH250d_E0ZOKwjBk5BiQn1x-RoE4Dk8RHvI/exec';
 const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
