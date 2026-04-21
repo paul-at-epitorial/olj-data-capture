@@ -79,46 +79,54 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
     // 5. If it is new, open the actual job post to get the deep details
     console.log(`[NEW] Extracting data for Job ${jobId}...`);
-    await page.goto(link, { waitUntil: 'domcontentloaded' });
+    
+    let jobData;
+    try {
+      // 30-second timeout prevents the scraper from hanging forever on a dead page
+      await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Extract the text using DOM selectors
-    const jobData = await page.evaluate(() => {
-      
-      // Helper function to grab text and clean up OLJ's corrupted emojis (????)
-      const cleanText = (text) => {
-        return text ? text.replace(/\?{2,}/g, '').trim() : 'N/A';
-      };
+      // Extract the text using DOM selectors
+      jobData = await page.evaluate(() => {
+        
+        // Helper function to grab text and clean up OLJ's corrupted emojis (????)
+        const cleanText = (text) => {
+          return text ? text.replace(/\?{2,}/g, '').trim() : 'N/A';
+        };
 
-      const getText = (selector) => {
-        const el = document.querySelector(selector);
-        return cleanText(el ? el.innerText : 'N/A');
-      };
-      
-      const getSiblingText = (labelText) => {
-        const headers = Array.from(document.querySelectorAll('h3, dt, strong, span, p')); 
-        const target = headers.find(h => h.innerText.trim().toUpperCase().includes(labelText.toUpperCase()));
-        return cleanText(target && target.nextElementSibling ? target.nextElementSibling.innerText : 'N/A');
-      };
-      
-      let rawDesc = getText('#job-description');
-      // Remove excessive line breaks to keep the paragraph compact
-      rawDesc = rawDesc.replace(/\n{3,}/g, '\n\n');
-      
-      // Smart Truncation: Cut at ~450 chars, but stop at the last whole word so it doesn't chop mid-sentence
-      let finalDesc = rawDesc;
-      if (rawDesc.length > 450) {
-        finalDesc = rawDesc.substring(0, 450);
-        finalDesc = finalDesc.substring(0, finalDesc.lastIndexOf(" ")) + '...';
-      }
+        const getText = (selector) => {
+          const el = document.querySelector(selector);
+          return cleanText(el ? el.innerText : 'N/A');
+        };
+        
+        const getSiblingText = (labelText) => {
+          const headers = Array.from(document.querySelectorAll('h3, dt, strong, span, p')); 
+          const target = headers.find(h => h.innerText.trim().toUpperCase().includes(labelText.toUpperCase()));
+          return cleanText(target && target.nextElementSibling ? target.nextElementSibling.innerText : 'N/A');
+        };
+        
+        let rawDesc = getText('#job-description');
+        // Remove excessive line breaks to keep the paragraph compact
+        rawDesc = rawDesc.replace(/\n{3,}/g, '\n\n');
+        
+        // Smart Truncation: Cut at ~450 chars, but stop at the last whole word so it doesn't chop mid-sentence
+        let finalDesc = rawDesc;
+        if (rawDesc.length > 450) {
+          finalDesc = rawDesc.substring(0, 450);
+          finalDesc = finalDesc.substring(0, finalDesc.lastIndexOf(" ")) + '...';
+        }
 
-      return {
-        title: getText('h1'), 
-        salary: getSiblingText('WAGE / SALARY'),
-        type: getSiblingText('TYPE OF WORK'),
-        hours: getSiblingText('HOURS PER WEEK'),
-        description: finalDesc
-      };
-    });
+        return {
+          title: getText('h1'), 
+          salary: getSiblingText('WAGE / SALARY'),
+          type: getSiblingText('TYPE OF WORK'),
+          hours: getSiblingText('HOURS PER WEEK'),
+          description: finalDesc
+        };
+      });
+    } catch (error) {
+      console.log(`[ERROR] Could not load or read Job ${jobId}. It may be deleted or blocked. Skipping...`);
+      continue; 
+    }
 
     // Format the Hours (Issue #3)
     let displayHours = jobData.hours;
@@ -138,7 +146,6 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     try {
         const saveRes = await fetch(GOOGLE_SHEET_WEB_APP, {
             method: 'POST',
-            // Notice we added jobLink: link right here
             body: JSON.stringify({ action: 'save', jobId: jobId, jobLink: link, description: jobData.description }),
             headers: { 'Content-Type': 'application/json' }
         });
