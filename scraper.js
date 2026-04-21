@@ -1,18 +1,23 @@
-const puppeteer = require('puppeteer');
+const { connect } = require("puppeteer-real-browser");
+const { createCursor } = require("ghost-cursor");
 
 // Paste your actual URLs here
 const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbzSeUYpWgKRMdWRTFKm88v08bK7D86uOkBK0nwX_JIkg39AJM9kKb2d6k6lS1Mqag5I/exec';
 const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
-  console.log('Launching browser in cloud mode...');
+  console.log('Launching real browser proxy in cloud mode...');
   
   // Send a silent background ping to wake up the Render server
   fetch('https://va-job-bot.onrender.com').catch(() => {});
 
-  // headless: true is required for GitHub Actions
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-  const page = await browser.newPage();
+  // Launching via puppeteer-real-browser to bypass Cloudflare and WAFs
+  const { browser, page } = await connect({
+      headless: "auto",
+      turnstile: true, // Auto-solves Cloudflare checks
+      // Uncomment and add details below if you purchase a residential proxy
+      // proxy: { host: '...', port: 1234, username: '...', password: '...' } 
+  });
   
   await page.setViewport({ width: 1920, height: 1080 });
 
@@ -84,6 +89,13 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     try {
       // 30-second timeout prevents the scraper from hanging forever on a dead page
       await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+      // -- HUMAN INTERACTION JITTER --
+      // Spoofs realistic mouse movement and scrolling to evade behavioral WAF blocks
+      const cursor = createCursor(page);
+      await cursor.randomMove();
+      await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 500) + 200));
+      await new Promise(r => setTimeout(r, Math.random() * 2000 + 1500)); // Random 1.5s to 3.5s pause
 
       // Extract the text using DOM selectors
       jobData = await page.evaluate(() => {
@@ -194,7 +206,10 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       const res = await fetch(DISCORD_WEBHOOK, {
         method: 'POST',
         body: JSON.stringify(renderPayload),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': 'SECRET_KEY_12345' 
+        }
       });
       
       if (!res.ok) throw new Error(`Render server returned ${res.status}`);
