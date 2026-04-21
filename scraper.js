@@ -6,6 +6,10 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
   console.log('Launching browser in cloud mode...');
+  
+  // Send a silent background ping to wake up the Render server
+  fetch('https://va-job-bot.onrender.com').catch(() => {});
+
   // headless: true is required for GitHub Actions
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
