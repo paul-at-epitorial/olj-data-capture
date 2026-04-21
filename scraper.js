@@ -1,31 +1,24 @@
 const { connect } = require("puppeteer-real-browser");
 const { createCursor } = require("ghost-cursor");
 
-// Paste your actual URLs here
 const GOOGLE_SHEET_WEB_APP = 'https://script.google.com/macros/s/AKfycbz4XegBGQS31wmMsG8Ux-jPnfdSHHiZCAH250d_E0ZOKwjBk5BiQn1x-RoE4Dk8RHvI/exec';
 const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
 
 (async () => {
   console.log('Launching real browser proxy in cloud mode...');
   
-  // Send a silent background ping to wake up the Render server
   fetch('https://va-job-bot.onrender.com').catch(() => {});
 
-  // Launching via puppeteer-real-browser to bypass Cloudflare and WAFs
   const { browser, page } = await connect({
       headless: "auto",
-      turnstile: true, // Auto-solves Cloudflare checks
-      // Uncomment and add details below if you purchase a residential proxy
-      // proxy: { host: '...', port: 1234, username: '...', password: '...' } 
+      turnstile: true, 
   });
   
   await page.setViewport({ width: 1920, height: 1080 });
 
-  // 1. Go directly to the main job board (Guest Mode)
   console.log('Loading OnlineJobs.ph...');
   await page.goto('https://www.onlinejobs.ph/jobseekers/jobsearch', { waitUntil: 'networkidle2' });
   
-  // 2. Grab URLs AND Timestamps from the main board
   const jobListings = await page.evaluate(() => {
     const cards = Array.from(document.querySelectorAll('.jobpost-cat-box')); 
     
@@ -40,19 +33,15 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     }).filter(job => job.url && job.url.includes('/jobseekers/job/'));
   });
 
-  // Remove duplicates 
   const uniqueListings = [...new Map(jobListings.map(item => [item.url, item])).values()];
   console.log(`Found ${uniqueListings.length} jobs. Processing...`);
 
-  // 3. Loop through the listings
   for (let listing of uniqueListings) {
     const link = listing.url;
     let rawTime = listing.postedTime; 
     
-    // Safety split to get true ID even if the URL structure shifts slightly
     const jobId = link.split('/').pop().split('-').pop(); 
 
-    // Date Formatter: Converts "2026-04-19 09:46:39" to "Apr-19-26 at 9:46:39 am"
     let displayTime = rawTime;
     if (displayTime !== 'Time not found') {
       const d = new Date(displayTime);
@@ -64,7 +53,6 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       }
     }
 
-    // 4. Ping Google Sheets to check for ID duplicates
     try {
       const checkRes = await fetch(GOOGLE_SHEET_WEB_APP, {
         method: 'POST',
@@ -82,45 +70,27 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       continue;
     }
 
-    // 5. If it is new, open the actual job post to get the deep details
     console.log(`[NEW] Extracting data for Job ${jobId}...`);
     
     let jobData;
     try {
-      // 30-second timeout prevents the scraper from hanging forever on a dead page
       await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-      // -- HUMAN INTERACTION JITTER --
-      // Spoofs realistic mouse movement and scrolling to evade behavioral WAF blocks
       const cursor = createCursor(page);
       await cursor.randomMove();
       await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 500) + 200));
-      await new Promise(r => setTimeout(r, Math.random() * 2000 + 1500)); // Random 1.5s to 3.5s pause
+      await new Promise(r => setTimeout(r, Math.random() * 2000 + 1500)); 
 
-      // Extract the text using DOM selectors
       jobData = await page.evaluate(() => {
-        
-        // Helper function to grab text and clean up OLJ's corrupted emojis (????)
-        const cleanText = (text) => {
-          return text ? text.replace(/\?{2,}/g, '').trim() : 'N/A';
-        };
-
-        const getText = (selector) => {
-          const el = document.querySelector(selector);
-          return cleanText(el ? el.innerText : 'N/A');
-        };
-        
+        const cleanText = (text) => text ? text.replace(/\?{2,}/g, '').trim() : 'N/A';
+        const getText = (selector) => cleanText(document.querySelector(selector) ? document.querySelector(selector).innerText : 'N/A');
         const getSiblingText = (labelText) => {
           const headers = Array.from(document.querySelectorAll('h3, dt, strong, span, p')); 
           const target = headers.find(h => h.innerText.trim().toUpperCase().includes(labelText.toUpperCase()));
           return cleanText(target && target.nextElementSibling ? target.nextElementSibling.innerText : 'N/A');
         };
         
-        let rawDesc = getText('#job-description');
-        // Remove excessive line breaks to keep the paragraph compact
-        rawDesc = rawDesc.replace(/\n{3,}/g, '\n\n');
-        
-        // Smart Truncation: Cut at ~450 chars, but stop at the last whole word so it doesn't chop mid-sentence
+        let rawDesc = getText('#job-description').replace(/\n{3,}/g, '\n\n');
         let finalDesc = rawDesc;
         if (rawDesc.length > 450) {
           finalDesc = rawDesc.substring(0, 450);
@@ -140,21 +110,17 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       continue; 
     }
 
-    // Format the Hours (Issue #3)
     let displayHours = jobData.hours;
-    // If it contains a number, but DOES NOT contain the word 'hour' or 'hrs'
     if (/\d/.test(displayHours) && !/hour|hrs/i.test(displayHours)) {
         displayHours += " hours";
     }
 
-    // Check for closed or deleted job posts
     const statusCheck = (jobData.title + " " + jobData.description).toLowerCase();
     if (statusCheck.includes("has been closed") || statusCheck.includes("no longer posted") || statusCheck.includes("has been deleted") || statusCheck.includes("no longer visible") || statusCheck.includes("no longer available")) {
         console.log(`[SKIPPED] Job ${jobId} is closed or deleted.`);
         continue;
     }
 
-    // 5.5 Send description to Sheet (Column C) and check for copy-paste duplicates
     try {
         const saveRes = await fetch(GOOGLE_SHEET_WEB_APP, {
             method: 'POST',
@@ -172,7 +138,6 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
         continue;
     }
 
-    // 6. Sort the job into a category using comprehensive arrays
     const searchText = (jobData.title + " " + jobData.description).toLowerCase();
     
     const kwSystems = ['gohighlevel', 'ghl', 'zapier', 'make.com', 'api', 'automation', 'webhook', 'crm', 'activecampaign', 'hubspot', 'systems'];
@@ -182,7 +147,7 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     const kwTech = ['tech', 'developer', 'code', 'it support', 'web', 'software', 'programmer', 'python', 'javascript'];
     const kwManagement = ['manage', 'director', 'lead', 'supervisor', 'head of'];
     
-    let category = "admin-va"; // Default fallback if no keywords match
+    let category = "admin-va"; 
 
     if (kwCreative.some(kw => searchText.includes(kw))) category = "creative-va";
     else if (kwEcom.some(kw => searchText.includes(kw))) category = "ecom-va";
@@ -191,9 +156,8 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
     else if (kwTech.some(kw => searchText.includes(kw))) category = "tech-va";
     else if (kwManagement.some(kw => searchText.includes(kw))) category = "management-va";
 
-    // 7. Format the payload for the Render Bot
-    // Wrapping the link in < > hides Discord's ugly automated link preview box
-    const richTitle = `${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${displayHours}\n📝 **Description:**\n${jobData.description}`;
+    // Typo fixed here on the title string: **${jobData.title}**
+    const richTitle = `**${jobData.title}**\n\n💰 **Salary:** ${jobData.salary}\n🕒 **Type:** ${jobData.type} | ${displayHours}\n📝 **Description:**\n${jobData.description}`;
 
     const renderPayload = {
       jobCategoryKey: category,
@@ -201,7 +165,6 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       jobLink: `<${link}>`
     };
 
-    // 8. Fire it to the Render server
     try {
       const res = await fetch(DISCORD_WEBHOOK, {
         method: 'POST',
@@ -218,7 +181,6 @@ const DISCORD_WEBHOOK = 'https://va-job-bot.onrender.com/new-job';
       console.log(`Error posting to Render for ${jobId}:`, err);
     }
     
-    // Pause for 3 seconds between scraping profiles
     await new Promise(r => setTimeout(r, 3000));
   }
 
